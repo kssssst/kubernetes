@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Container image archives
+*.tar
+images/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+secret.yaml
+04-secret.yaml
+
+# Kubernetes credentials
+kubeconfig
+admin.conf
+.kube/
+
+# Python
+__pycache__/
+*.pyc
