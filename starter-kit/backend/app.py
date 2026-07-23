@@ -1,17 +1,35 @@
 import os
+import socket
 
 import psycopg2
 from flask import Flask, jsonify, request
 
+
 app = Flask(__name__)
+
+
+# -----------------------------
+# Configuration
+# -----------------------------
 
 DB_HOST = os.getenv("DB_HOST", "postgres")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 DB_NAME = os.getenv("DB_NAME", "appdb")
 DB_USER = os.getenv("DB_USER", "appuser")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+
+# Версия приложения передаётся при сборке Docker image.
 APP_VERSION = os.getenv("APP_VERSION", "unknown")
 
+# В Kubernetes hostname контейнера по умолчанию соответствует имени Pod.
+# Если переменная POD_NAME когда-либо будет передана явно,
+# используется она; иначе берётся hostname контейнера.
+POD_NAME = os.getenv("POD_NAME") or socket.gethostname()
+
+
+# -----------------------------
+# PostgreSQL connection
+# -----------------------------
 
 def get_connection():
     return psycopg2.connect(
@@ -25,6 +43,7 @@ def get_connection():
 
 
 def initialize_database():
+    """Создаёт таблицу счётчика при первом обращении."""
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -45,32 +64,73 @@ def initialize_database():
             )
 
 
+# -----------------------------
+# Kubernetes probes
+# -----------------------------
+
 @app.get("/healthz")
 def health():
-    return jsonify(status="ok"), 200
+    """Liveness/startup probe: проверяет работу самого приложения."""
+    return jsonify(
+        status="ok",
+        pod=POD_NAME,
+    ), 200
 
 
 @app.get("/readyz")
 def ready():
+    """
+    Readiness probe:
+    Pod считается готовым только при доступности PostgreSQL.
+    """
     try:
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
 
-        return jsonify(status="ready"), 200
+        return jsonify(
+            status="ready",
+            pod=POD_NAME,
+        ), 200
 
     except Exception as exc:
-        return jsonify(status="not-ready", error=str(exc)), 503
+        return jsonify(
+            status="not-ready",
+            pod=POD_NAME,
+            error=str(exc),
+        ), 503
 
+
+# -----------------------------
+# Application API
+# -----------------------------
 
 @app.get("/api/version")
 def version():
-    return jsonify(version=APP_VERSION)
+    """
+    Возвращает:
+    - версию приложения;
+    - имя Pod, который обработал запрос.
+
+    Это позволяет подтвердить работу нескольких backend-реплик
+    и балансировку запросов Kubernetes Service.
+    """
+    return jsonify(
+        pod=POD_NAME,
+        version=APP_VERSION,
+    )
 
 
 @app.route("/api/counter", methods=["GET", "POST"])
 def counter():
+    """
+    GET  — возвращает текущее значение persistent counter.
+    POST — увеличивает persistent counter на 1.
+
+    Счётчик хранится в PostgreSQL, поэтому переживает
+    удаление и пересоздание postgres-0.
+    """
     try:
         initialize_database()
 
@@ -90,11 +150,23 @@ def counter():
 
                 else:
                     cursor.execute(
-                        "SELECT value FROM counter WHERE id = 1"
+                        """
+                        SELECT value
+                        FROM counter
+                        WHERE id = 1
+                        """
                     )
                     value = cursor.fetchone()[0]
 
-        return jsonify(value=value, version=APP_VERSION)
+        return jsonify(
+            value=value,
+            version=APP_VERSION,
+            pod=POD_NAME,
+        )
 
     except Exception as exc:
-        return jsonify(error=str(exc)), 500
+        return jsonify(
+            error=str(exc),
+            pod=POD_NAME,
+            version=APP_VERSION,
+        ), 500
