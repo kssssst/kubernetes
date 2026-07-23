@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-tls-config
+  namespace: homework
+data:
+  pg_hba.conf: |
+    # Local Unix-socket connections are allowed for administration
+    # and Kubernetes health checks.
+    local   all   all                         trust
+
+    # Explicitly reject all plaintext TCP connections.
+    hostnossl all all 0.0.0.0/0              reject
+    hostnossl all all ::/0                    reject
+
+    # Allow network connections only over TLS.
+    hostssl all all 0.0.0.0/0                 scram-sha-256
+    hostssl all all ::/0                       scram-sha-256

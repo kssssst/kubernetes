@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: homework
+
+spec:
+  template:
+    spec:
+
+      initContainers:
+        - name: prepare-postgres-tls
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - /bin/sh
+            - -ec
+
+          args:
+            - |
+              echo "=== Preparing PostgreSQL TLS files ==="
+
+              cp /tls-source/tls.crt /tls-work/server.crt
+              cp /tls-source/tls.key /tls-work/server.key
+              cp /tls-source/ca.crt  /tls-work/ca.crt
+
+              chown 70:70 \
+                /tls-work/server.crt \
+                /tls-work/server.key \
+                /tls-work/ca.crt
+
+              chmod 0644 /tls-work/server.crt
+              chmod 0644 /tls-work/ca.crt
+              chmod 0600 /tls-work/server.key
+
+              echo "=== TLS files prepared ==="
+              ls -ln /tls-work
+
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+
+          volumeMounts:
+            - name: postgres-tls-source
+              mountPath: /tls-source
+              readOnly: true
+
+            - name: postgres-tls-work
+              mountPath: /tls-work
+
+      containers:
+        - name: postgres
+
+          args:
+            - postgres
+
+            - -c
+            - ssl=on
+
+            - -c
+            - ssl_cert_file=/etc/postgresql/tls/server.crt
+
+            - -c
+            - ssl_key_file=/etc/postgresql/tls/server.key
+
+            - -c
+            - ssl_ca_file=/etc/postgresql/tls/ca.crt
+
+            - -c
+            - hba_file=/etc/postgresql/tls-config/pg_hba.conf
+
+          volumeMounts:
+            - name: postgres-tls-work
+              mountPath: /etc/postgresql/tls
+              readOnly: true
+
+            - name: postgres-tls-config
+              mountPath: /etc/postgresql/tls-config
+              readOnly: true
+
+      volumes:
+        - name: postgres-tls-source
+          secret:
+            secretName: postgres-tls
+
+        - name: postgres-tls-work
+          emptyDir: {}
+
+        - name: postgres-tls-config
+          configMap:
+            name: postgres-tls-config

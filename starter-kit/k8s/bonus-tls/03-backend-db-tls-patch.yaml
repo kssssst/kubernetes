@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: homework
+
+spec:
+  template:
+    spec:
+
+      volumes:
+        - name: postgres-ca
+          secret:
+            secretName: backend-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
+
+      containers:
+        - name: backend
+
+          env:
+            - name: PGSSLMODE
+              value: verify-full
+
+            - name: PGSSLROOTCERT
+              value: /etc/postgresql-ca/ca.crt
+
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /etc/postgresql-ca
+              readOnly: true
