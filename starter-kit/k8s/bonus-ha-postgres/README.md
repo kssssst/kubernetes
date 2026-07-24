@@ -1,26 +1,58 @@
-# HA PostgreSQL bonus
+# Дополнительное задание: отказоустойчивый PostgreSQL
 
-This bonus demonstrates a real highly available PostgreSQL cluster
-managed by CloudNativePG.
+В рамках данного дополнительного задания реализован отказоустойчивый кластер PostgreSQL под управлением CloudNativePG.
 
-Architecture:
+## Архитектура
 
-- 3 PostgreSQL instances
-- 1 Primary
-- 2 Standby replicas
-- streaming replication
-- dedicated persistent storage
-- automatic failover
-- automatic read-write service redirection
+Кластер включает:
 
-Failover test:
+- 3 экземпляра PostgreSQL;
+- 1 основной экземпляр Primary;
+- 2 резервных экземпляра Standby Replica;
+- потоковую репликацию PostgreSQL (streaming replication);
+- отдельное постоянное хранилище для каждого экземпляра;
+- автоматическое переключение при отказе Primary (failover);
+- автоматическое перенаправление сервиса чтения и записи на новый Primary после отказа.
 
-1. Create test data on Primary.
-2. Delete the current Primary Pod.
-3. Observe automatic promotion of a standby.
-4. Verify the old data on the new Primary.
-5. Insert new data after failover.
-6. Verify that the cluster returns to one Primary and two Replicas.
+CloudNativePG автоматически управляет ролями экземпляров PostgreSQL, репликацией данных и восстановлением требуемого состояния кластера.
 
-The mandatory PostgreSQL StatefulSet in namespace `homework`
-is not modified by this bonus.
+## Проверка отказоустойчивости
+
+Для проверки механизма автоматического failover выполняется следующий эксперимент:
+
+1. Определяется текущий экземпляр PostgreSQL, выполняющий роль Primary.
+2. В базе данных создаются контрольные данные.
+3. Проверяется наличие двух работающих Standby Replica и состояние streaming replication.
+4. Pod текущего Primary принудительно удаляется для моделирования отказа.
+5. Наблюдается автоматическое повышение одной из Standby Replica до роли нового Primary.
+6. На новом Primary проверяется сохранность данных, созданных до отказа.
+7. После failover создаются новые данные, что подтверждает возможность продолжения работы базы данных.
+8. Проверяется восстановление кластером требуемой конфигурации с одним Primary и двумя Replica.
+
+## Ожидаемый результат
+
+После отказа исходного Primary вмешательство администратора для ручного назначения нового Primary не требуется.
+
+CloudNativePG автоматически:
+
+- обнаруживает отказ;
+- выбирает подходящую Standby Replica;
+- выполняет её повышение до роли Primary;
+- перенаправляет сервис `ha-postgres-rw` на новый Primary;
+- восстанавливает требуемую структуру отказоустойчивого кластера.
+
+Контрольные данные, созданные до отказа, должны оставаться доступными после автоматического переключения.
+
+## Изоляция от основной части работы
+
+Данный кластер развёрнут отдельно в пространстве имён:
+
+`ha-postgres`
+
+Основной PostgreSQL StatefulSet обязательной части задания, расположенный в пространстве имён:
+
+`homework`
+
+данным экспериментом не изменяется.
+
+Таким образом, дополнительное задание демонстрирует работу реальной репликации PostgreSQL и автоматического failover без нарушения функционирования основной части Kubernetes-проекта.

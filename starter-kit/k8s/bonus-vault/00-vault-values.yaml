@@ -1,0 +1,17 @@
+server:
+  dev:
+    enabled: true
+
+  # Vault server фиксируется на kube3,
+  # чтобы заранее подготовить image именно на этом узле.
+  nodeSelector:
+    kubernetes.io/hostname: kube3
+
+  dataStorage:
+    enabled: false
+
+injector:
+  enabled: false
+
+ui:
+  enabled: false
